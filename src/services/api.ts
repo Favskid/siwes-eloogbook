@@ -78,9 +78,10 @@ export interface CreateLogEntryRequest {
 
 export interface Notification {
   id: string;
-  type: 'entry_approved' | 'entry_rejected' | 'entry_submitted';
+  user_id: string;
   title: string;
   message: string;
+  type: 'approval' | 'rejection' | 'feedback' | 'submission' | 'info';
   is_read: boolean;
   related_entry_id?: string;
   created_at: string;
@@ -525,7 +526,7 @@ class APIService {
         }
       });
 
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.handleError(error);
     }
@@ -534,11 +535,11 @@ class APIService {
   /**
    * Get a single log entry by ID
    */
-  async getLogEntry(entryId: string): Promise<{ entry: LogEntry }> {
+  async getLogEntry(entryId: string): Promise<LogEntry> {
     try {
       this.checkRateLimit('general');
       const response = await this.axiosInstance.get(`/log-entries/${entryId}`);
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.handleError(error);
     }
@@ -549,38 +550,12 @@ class APIService {
    */
   async updateLogEntry(
     entryId: string,
-    data: Partial<CreateLogEntryRequest>
-  ): Promise<{ message: string; entry: LogEntry }> {
+    data: Partial<LogEntry>
+  ): Promise<LogEntry> {
     try {
       this.checkRateLimit('general');
-
-      const formData = new FormData();
-      if (data.date) formData.append('date', data.date);
-      if (data.week_number) formData.append('week_number', data.week_number.toString());
-      if (data.activity_description) formData.append('activity_description', data.activity_description);
-      if (data.tools_equipment) formData.append('tools_equipment', data.tools_equipment);
-      if (data.skills_acquired) formData.append('skills_acquired', data.skills_acquired);
-      if (data.challenges_faced) formData.append('challenges_faced', data.challenges_faced);
-
-      if (data.files && data.files.length > 0) {
-        if (data.files.length > 5) {
-          throw new Error('Maximum 5 files per request');
-        }
-        data.files.forEach((file) => {
-          if (file.size > 10 * 1024 * 1024) {
-            throw new Error(`File ${file.name} exceeds 10MB limit`);
-          }
-          formData.append('files', file);
-        });
-      }
-
-      const response = await this.axiosInstance.put(`/log-entries/${entryId}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      return response.data;
+      const response = await this.axiosInstance.put(`/log-entries/${entryId}`, data);
+      return response.data.data;
     } catch (error) {
       this.handleError(error);
     }
@@ -589,11 +564,11 @@ class APIService {
   /**
    * Submit log entry (change status from draft to pending)
    */
-  async submitLogEntry(entryId: string): Promise<{ message: string; entry: LogEntry }> {
+  async submitLogEntry(entryId: string): Promise<LogEntry> {
     try {
       this.checkRateLimit('general');
       const response = await this.axiosInstance.put(`/log-entries/${entryId}/submit`);
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.handleError(error);
     }
@@ -899,8 +874,8 @@ class APIService {
       this.checkRateLimit('general');
       const response = await this.axiosInstance.get('/notifications', { params });
       return {
-        data: response.data.notifications,
-        pagination: response.data.pagination
+        data: response.data.data.notifications || [],
+        pagination: response.data.data.pagination
       };
     } catch (error) {
       this.handleError(error);
