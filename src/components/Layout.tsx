@@ -91,7 +91,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
 
   const navItems = ALL_NAV.filter(item => !item.roles || item.roles.includes(user?.role || ""));
-  const unreadCount = user ? getUnreadCount(user.id) : 0;
+  const unreadCount = getUnreadCount();
 
   useEffect(() => {
     setSidebarOpen(false);
