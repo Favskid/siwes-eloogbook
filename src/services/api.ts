@@ -603,6 +603,19 @@ class APIService {
   }
 
   /**
+   * Get supervisor dashboard
+   */
+  async getSupervisorDashboard(): Promise<{ success: boolean; data: SupervisorDashboard }> {
+    try {
+      this.checkRateLimit('general');
+      const response = await this.axiosInstance.get('/supervisors/dashboard');
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  /**
    * Get entries assigned to supervisor
    */
   async getAssignedEntries(
@@ -652,14 +665,11 @@ class APIService {
    */
   async getAssignedStudents(
     params?: PaginationParams
-  ): Promise<PaginatedResponse<User>> {
+  ): Promise<User[]> {
     try {
       this.checkRateLimit('general');
       const response = await this.axiosInstance.get('/supervisors/students', { params });
-      return {
-        data: response.data.students,
-        pagination: response.data.pagination
-      };
+      return response.data.data || [];
     } catch (error) {
       this.handleError(error);
     }
@@ -670,15 +680,8 @@ class APIService {
    */
   async getStudentProgress(studentId: string): Promise<{
     student: User;
-    progress: {
-      total_entries: number;
-      submitted_entries: number;
-      pending_entries: number;
-      approved_entries: number;
-      rejected_entries: number;
-      approval_rate: number;
-      recent_entries: LogEntry[];
-    };
+    stats: { total: number; approved: number; pending: number; rejected: number };
+    recentEntries: LogEntry[];
   }> {
     try {
       this.checkRateLimit('general');
