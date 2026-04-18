@@ -40,7 +40,7 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
   const { notifications, markNotificationRead, markAllRead } = useData();
   const ref = useRef<HTMLDivElement>(null);
 
-  const userNotifs = notifications.filter(n => n.userId === userId).slice(0, 10);
+  const userNotifs = notifications.slice(0, 10);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -60,7 +60,7 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h3 className="font-semibold text-sm text-foreground">Notifications</h3>
         <button
-          onClick={() => markAllRead(userId)}
+          onClick={() => markAllRead()}
           className="text-xs text-primary hover:underline"
         >
           Mark all read
@@ -74,7 +74,7 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
             <div
               key={n.id}
               onClick={() => markNotificationRead(n.id)}
-              className={`flex gap-3 p-3 cursor-pointer transition-colors hover:bg-muted/50 ${!n.read ? "bg-primary/5" : ""}`}
+              className={`flex gap-3 p-3 cursor-pointer transition-colors hover:bg-muted/50 ${!n.is_read ? "bg-primary/5" : ""}`}
             >
               <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${typeColor(n.type)}`}>
                 {typeIcon(n.type)}
@@ -82,10 +82,10 @@ export default function NotificationDropdown({ userId, onClose }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <span className="text-sm font-medium text-foreground leading-tight">{n.title}</span>
-                  {!n.read && <span className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1" />}
+                  {!n.is_read && <span className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1" />}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</p>
-                <span className="text-xs text-muted-foreground/70 mt-1 block">{formatDate(n.createdAt)}</span>
+                <span className="text-xs text-muted-foreground/70 mt-1 block">{formatDate(n.created_at)}</span>
               </div>
             </div>
           ))
