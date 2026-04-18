@@ -241,6 +241,84 @@ export default function LogEntryDetail({ entryId, editMode }: Props) {
           </Link>
         </div>
       )}
+
+      {/* Review Section for Supervisor */}
+      {user?.role === "supervisor" && entry.status === "pending" && (
+        <SupervisorReviewSection entryId={entry.id} onComplete={fetchEntry} />
+      )}
+    </div>
+  );
+}
+
+function SupervisorReviewSection({ entryId, onComplete }: { entryId: string; onComplete: () => void }) {
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { error, message, handleError, clearError } = useError();
+
+  const handleAction = async (action: "approve" | "reject") => {
+    if (action === "reject" && !comment.trim()) {
+      handleError(new Error("Please provide a reason for rejection in the comment field."));
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      clearError();
+      if (action === "approve") {
+        await apiService.approveEntry(entryId, comment);
+      } else {
+        await apiService.rejectEntry(entryId, comment);
+      }
+      onComplete();
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border-2 border-primary/20 rounded-2xl p-6 shadow-sm">
+      <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+        <span className="w-8 h-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center text-base">⚖️</span>
+        Review this Submission
+      </h3>
+      
+      {error && <div className="mb-4"><ErrorAlert message={message} onDismiss={clearError} /></div>}
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">
+            Supervisor's Feedback
+            {comment.trim() === "" && <span className="text-red-500 ml-1 italic text-xs font-normal">(Required for rejection)</span>}
+          </label>
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            placeholder="Provide feedback to the student about this entry..."
+            rows={4}
+            disabled={submitting}
+            className="w-full px-4 py-3 bg-background border border-input rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none disabled:opacity-50"
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+          <button
+            onClick={() => handleAction("reject")}
+            disabled={submitting}
+            className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-muted text-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200 border border-transparent transition-all disabled:opacity-50"
+          >
+            {submitting ? "Processing..." : "Reject Entry"}
+          </button>
+          <button
+            onClick={() => handleAction("approve")}
+            disabled={submitting}
+            className="flex-1 px-6 py-3 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+          >
+            {submitting ? "Processing..." : "Approve Entry"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

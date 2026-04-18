@@ -2,9 +2,97 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiService, LogEntry, User } from "../services/api";
 import StatusBadge from "../components/StatusBadge";
+import { useError } from "../hooks/useError";
+import ErrorAlert from "../components/ErrorAlert";
 
 function formatDate(d: string) {
+  if (!d) return "";
   return new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function StudentProgressModal({ studentId, onClose }: { studentId: string; onClose: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProgress = async () => {
+      try {
+        setLoading(true);
+        const progress = await apiService.getStudentProgress(studentId);
+        setData(progress);
+      } catch (err) {
+        console.error("Failed to fetch student progress:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProgress();
+  }, [studentId]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 className="font-semibold text-foreground">Student Progress</h2>
+            {data?.student && <p className="text-xs text-muted-foreground">{data.student.name} • {data.student.matric_number}</p>}
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-6">
+          {loading ? (
+            <div className="py-10 text-center">
+              <div className="w-8 h-8 border-3 border-muted border-t-primary rounded-full animate-spin mx-auto mb-2"></div>
+              <p className="text-sm text-muted-foreground">Loading progress...</p>
+            </div>
+          ) : data ? (
+            <>
+              <div className="grid grid-cols-4 gap-4">
+                {[
+                  { label: "Total", value: data.stats.total, color: "text-foreground" },
+                  { label: "Approved", value: data.stats.approved, color: "text-green-600" },
+                  { label: "Pending", value: data.stats.pending, color: "text-yellow-600" },
+                  { label: "Rejected", value: data.stats.rejected, color: "text-red-600" },
+                ].map(s => (
+                  <div key={s.label} className="bg-muted/30 rounded-lg p-3 text-center border border-border/50">
+                    <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+                    <div className="text-[10px] uppercase font-semibold text-muted-foreground mt-0.5">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-3">Recent Entries</h3>
+                <div className="space-y-3">
+                  {data.recentEntries.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No entries yet.</p>
+                  ) : (
+                    data.recentEntries.map((e: LogEntry) => (
+                      <div key={e.id} className="border border-border/60 rounded-lg p-3 bg-muted/10">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs font-bold text-foreground">Week {e.week_number}</span>
+                          <StatusBadge status={e.status as any} />
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{e.activity_description}</p>
+                        <div className="text-[10px] text-muted-foreground/60 mt-2">{formatDate(e.date)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">Failed to load data.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ApprovalModal({ entry, onApprove, onReject, onClose, isSubmitting }: {
@@ -17,7 +105,11 @@ function ApprovalModal({ entry, onApprove, onReject, onClose, isSubmitting }: {
   const [comment, setComment] = useState("");
 
   const handleReject = () => {
-    onReject(comment || "Please revise and resubmit.");
+    if (!comment.trim()) {
+      alert("Please provide a reason for rejection.");
+      return;
+    }
+    onReject(comment);
   };
 
   const handleApprove = () => {
@@ -40,12 +132,6 @@ function ApprovalModal({ entry, onApprove, onReject, onClose, isSubmitting }: {
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Activity</div>
             <p className="text-sm text-foreground leading-relaxed line-clamp-4">{entry.activity_description}</p>
           </div>
-          {entry.skills_acquired && (
-            <div>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Skills Acquired</div>
-              <p className="text-sm text-foreground">{entry.skills_acquired}</p>
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Comment (optional for approval, required for rejection)</label>
             <textarea
@@ -93,9 +179,10 @@ export default function SupervisorDashboard() {
   const [assignedEntries, setAssignedEntries] = useState<LogEntry[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [reviewEntry, setReviewEntry] = useState<LogEntry | null>(null);
+  const [viewingProgress, setViewingProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { error, message, handleError, clearError } = useError();
 
   useEffect(() => {
     fetchData();
@@ -104,22 +191,21 @@ export default function SupervisorDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      setError(null);
+      clearError();
 
-      // Fetch dashboard stats
-      const dashResponse = await apiService.getSupervisorDashboard();
+      const [dashResponse, studentsData, entriesResponse] = await Promise.all([
+        apiService.getSupervisorDashboard(),
+        apiService.getAssignedStudents(),
+        apiService.getAssignedEntries({ limit: 100 })
+      ]);
+
       setDashboard(dashResponse.data);
-
-      // Fetch assigned students
-      const studentsResponse = await apiService.getAssignedStudents({ page: 1, limit: 100 });
-      setStudents(studentsResponse.data || []);
-
-      // Fetch assigned entries
-      const entriesResponse = await apiService.getAssignedEntries({ page: 1, limit: 100 });
-      setAssignedEntries(entriesResponse.data || []);
+      setStudents(studentsData);
+      // Filter out drafts as supervisors should not see them
+      setAssignedEntries((entriesResponse.data || []).filter(e => e.status !== "draft"));
     } catch (err: any) {
       console.error('Failed to fetch data:', err);
-      setError(err.message || 'Failed to load dashboard');
+      handleError(err);
     } finally {
       setLoading(false);
     }
@@ -131,11 +217,9 @@ export default function SupervisorDashboard() {
       setSubmitting(true);
       await apiService.approveEntry(reviewEntry.id, comment);
       setReviewEntry(null);
-      // Refresh data
       await fetchData();
     } catch (err: any) {
-      console.error('Failed to approve entry:', err);
-      setError(err.message || 'Failed to approve entry');
+      handleError(err);
     } finally {
       setSubmitting(false);
     }
@@ -147,11 +231,9 @@ export default function SupervisorDashboard() {
       setSubmitting(true);
       await apiService.rejectEntry(reviewEntry.id, comment);
       setReviewEntry(null);
-      // Refresh data
       await fetchData();
     } catch (err: any) {
-      console.error('Failed to reject entry:', err);
-      setError(err.message || 'Failed to reject entry');
+      handleError(err);
     } finally {
       setSubmitting(false);
     }
@@ -159,29 +241,10 @@ export default function SupervisorDashboard() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-muted border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading dashboard...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-          <h2 className="font-semibold text-red-900 mb-2">Error Loading Dashboard</h2>
-          <p className="text-red-800 text-sm">{error}</p>
-          <button 
-            onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
-          >
-            Retry
-          </button>
+      <div className="max-w-5xl mx-auto space-y-6 flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-muted border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground font-medium">Loading supervisor portal...</p>
         </div>
       </div>
     );
@@ -189,24 +252,14 @@ export default function SupervisorDashboard() {
 
   // Filter entries based on selected student
   const filteredEntries = selectedStudent 
-    ? assignedEntries.filter(e => e.id && selectedStudent) 
+    ? assignedEntries.filter(e => e.student_id === selectedStudent) 
     : assignedEntries;
 
   const stats = {
-    assignedStudents: dashboard?.stats?.assigned_students || 0,
-    totalEntries: dashboard?.stats?.total_entries || 0,
-    pendingCount: dashboard?.stats?.pending_approvals || 0,
-    approved: dashboard?.stats?.approved_entries || 0,
-  };
-
-  // Get student name from ID (if available in students list)
-  const getStudentName = (studentId?: string) => {
-    if (!studentId) return 'Unknown';
-    if (selectedStudent === studentId) {
-      const student = students.find(s => s.id === studentId);
-      return student?.name || 'Unknown';
-    }
-    return 'Unknown';
+    assignedStudents: dashboard?.assignedStudentsCount || 0,
+    totalEntries: dashboard?.stats?.total || 0,
+    pendingCount: dashboard?.stats?.pending || 0,
+    approved: dashboard?.stats?.approved || 0,
   };
 
   return (
@@ -221,68 +274,101 @@ export default function SupervisorDashboard() {
         />
       )}
 
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Supervisor Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {user?.department || 'Caritas University'} • {user?.name}
-        </p>
+      {viewingProgress && (
+        <StudentProgressModal
+          studentId={viewingProgress}
+          onClose={() => setViewingProgress(null)}
+        />
+      )}
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Supervisor Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {user?.department || 'Faculty Dashboard'} • Welcome, {user?.name}
+          </p>
+        </div>
+        <button 
+          onClick={fetchData} 
+          className="p-2 text-muted-foreground hover:text-primary transition-colors hover:bg-primary/5 rounded-full"
+          title="Refresh Dashboard"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
       </div>
+
+      {error && <ErrorAlert message={message} onDismiss={clearError} />}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Assigned Students", value: stats.assignedStudents, color: "bg-blue-100 text-blue-700" },
-          { label: "Pending Reviews", value: stats.pendingCount, color: "bg-yellow-100 text-yellow-700" },
-          { label: "Approved Entries", value: stats.approved, color: "bg-green-100 text-green-700" },
-          { label: "Total Entries", value: stats.totalEntries, color: "bg-purple-100 text-purple-700" },
+          { label: "Assigned Students", value: stats.assignedStudents, icon: "👤" },
+          { label: "Pending Reviews", value: stats.pendingCount, icon: "⏳" },
+          { label: "Approved Entries", value: stats.approved, icon: "✅" },
+          { label: "Total Submissions", value: stats.totalEntries, icon: "📊" },
         ].map(s => (
-          <div key={s.label} className="bg-card border border-card-border rounded-xl p-5">
-            <div className="text-2xl font-bold text-foreground">{s.value}</div>
-            <div className="text-sm text-muted-foreground mt-1">{s.label}</div>
+          <div key={s.label} className="bg-card border border-card-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+              <div className="text-2xl font-bold text-foreground">{s.value}</div>
+              <span className="text-lg">{s.icon}</span>
+            </div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">{s.label}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5">
+      <div className="grid lg:grid-cols-3 gap-6">
         {/* Students list */}
-        <div className="bg-card border border-card-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h2 className="font-semibold text-foreground">My Students ({students.length})</h2>
+        <div className="bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-4 border-b border-border bg-muted/20">
+            <h2 className="font-semibold text-foreground flex items-center gap-2 text-sm uppercase tracking-wide">
+              <span>My Students</span>
+              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded-full text-[10px]">{students.length}</span>
+            </h2>
           </div>
-          <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+          <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
             <button
               onClick={() => setSelectedStudent(null)}
-              className={`w-full text-left px-5 py-3 text-sm transition-colors ${!selectedStudent ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted/50 text-foreground"}`}
+              className={`w-full text-left px-5 py-3 text-xs uppercase tracking-widest font-bold transition-colors ${!selectedStudent ? "bg-primary/5 text-primary" : "hover:bg-muted/50 text-muted-foreground"}`}
             >
-              All Students
+              All Submissions
             </button>
             {students.length === 0 ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                No students assigned
+              <div className="p-8 text-center text-sm text-muted-foreground italic">
+                No students assigned to you.
               </div>
             ) : (
               students.map(s => {
-                const studentEntries = assignedEntries.filter(e => e.id); // In real scenario, filter by student ID
-                const sPending = studentEntries.filter(e => e.status === "pending").length;
+                const sPending = assignedEntries.filter(e => e.student_id === s.id && e.status === "pending").length;
                 return (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelectedStudent(s.id)}
-                    className={`w-full text-left px-5 py-3 transition-colors ${selectedStudent === s.id ? "bg-primary/10" : "hover:bg-muted/50"}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-primary">{s.name.split(" ").map(n => n[0]).slice(0, 2).join("")}</span>
+                  <div key={s.id} className={`group flex items-center transition-colors ${selectedStudent === s.id ? "bg-primary/5 border-r-4 border-primary" : "hover:bg-muted/50"}`}>
+                    <button
+                      onClick={() => setSelectedStudent(s.id)}
+                      className="flex-1 text-left px-5 py-3 flex items-center gap-3 min-w-0"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0 border border-border">
+                        <span className="text-[10px] font-bold text-secondary-foreground">{s.name.split(" ").map(n => n[0]).slice(0, 2).join("")}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">{s.name.split(" ").slice(0, 2).join(" ")}</div>
-                        <div className="text-xs text-muted-foreground truncate">{s.matric_number || 'N/A'}</div>
+                        <div className="text-sm font-medium text-foreground truncate">{s.name}</div>
+                        <div className="text-[10px] text-muted-foreground truncate uppercase">{s.matric_number || 'No Matric'}</div>
                       </div>
                       {sPending > 0 && (
-                        <span className="w-5 h-5 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-bold shrink-0">{sPending}</span>
+                        <span className="w-5 h-5 bg-yellow-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold shrink-0">{sPending}</span>
                       )}
-                    </div>
-                  </button>
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setViewingProgress(s.id); }}
+                      className="pr-4 py-3 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                      title="View Progress"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </button>
+                  </div>
                 );
               })
             )}
@@ -290,50 +376,58 @@ export default function SupervisorDashboard() {
         </div>
 
         {/* Entries */}
-        <div className="lg:col-span-2 bg-card border border-card-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h2 className="font-semibold text-foreground">
-              {selectedStudent ? "Student's Entries" : "All Log Entries"}
+        <div className="lg:col-span-2 bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm flex flex-col h-full">
+          <div className="px-5 py-4 border-b border-border bg-muted/20 flex items-center justify-between">
+            <h2 className="font-semibold text-foreground text-sm uppercase tracking-wide">
+              {selectedStudent ? `${students.find(s => s.id === selectedStudent)?.name.split(" ")[0]}'s Entries` : "Recent Activity"}
             </h2>
           </div>
-          <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+          <div className="divide-y divide-border overflow-y-auto max-h-[500px] flex-1">
             {filteredEntries.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">No entries found</div>
+              <div className="p-20 text-center text-muted-foreground">
+                <div className="text-4xl mb-3">📭</div>
+                <p className="text-sm">No pending submissions found.</p>
+              </div>
             ) : (
-              filteredEntries.map(entry => (
-                <div key={entry.id} className="px-5 py-4 hover:bg-muted/30 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="text-sm font-medium text-foreground">Week {entry.week_number}</span>
-                        <StatusBadge status={entry.status} />
-                        <span className="text-xs text-muted-foreground">{formatDate(entry.date)}</span>
+              filteredEntries.map(entry => {
+                const student = students.find(s => s.id === entry.student_id);
+                return (
+                  <div key={entry.id} className="px-5 py-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <span className="text-sm font-bold text-foreground">Week {entry.week_number}</span>
+                          <StatusBadge status={entry.status as any} />
+                          <span className="text-[10px] text-muted-foreground uppercase font-medium">{formatDate(entry.date)}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 italic">"{entry.activity_description}"</p>
+                        {student && (
+                          <div className="mt-2 text-[10px] font-semibold text-primary uppercase">Student: {student.name}</div>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{entry.activity_description}</p>
+                      <div className="flex items-center gap-2">
+                        {entry.status === "pending" && (
+                          <button
+                            onClick={() => setReviewEntry(entry)}
+                            className="shrink-0 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:shadow-lg transition-all"
+                          >
+                            Review
+                          </button>
+                        )}
+                        <button 
+                         onClick={() => (window.location.href = `/log/${entry.id}`)}
+                         className="p-2 text-muted-foreground hover:text-foreground rounded-lg border border-border"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    {entry.status === "pending" && (
-                      <button
-                        onClick={() => setReviewEntry(entry)}
-                        className="shrink-0 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors"
-                      >
-                        Review
-                      </button>
-                    )}
-                    {entry.status === "approved" && (
-                      <span className="shrink-0 text-green-600">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </span>
-                    )}
                   </div>
-                  {entry.supervisor_comment && (
-                    <div className="mt-2 text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2 italic">
-                      Your comment: "{entry.supervisor_comment}"
-                    </div>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
