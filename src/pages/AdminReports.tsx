@@ -1,136 +1,173 @@
-import { useData } from "../context/DataContext";
+import { useState, useEffect } from "react";
+import { apiService, AdminDashboard } from "../services/api";
+import { useError } from "../hooks/useError";
+import ErrorAlert from "../components/ErrorAlert";
 
-const WEEKS = Array.from({ length: 12 }, (_, i) => ({
-  week: i + 1,
-  submissions: Math.floor(Math.random() * 15) + 5,
-  approved: Math.floor(Math.random() * 12) + 3,
-}));
-
-function Bar({ value, max, color, label }: { value: number; max: number; color: string; label: string }) {
-  const pct = Math.round((value / max) * 100);
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = Math.max(Math.round((value / max) * 100), 2);
   return (
-    <div className="flex items-end gap-1 flex-col items-center">
-      <div className="w-full flex-1 flex items-end" style={{ minHeight: "100px" }}>
-        <div
-          className={`w-full rounded-t transition-all ${color}`}
-          style={{ height: `${Math.max(pct, 4)}%` }}
-          title={`${label}: ${value}`}
-        />
-      </div>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
 
 export default function AdminReports() {
-  const { logEntries } = useData();
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [purging, setPurging] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const { error, message, handleError, clearError } = useError();
 
-  const approved = logEntries.filter(e => e.status === "approved").length;
-  const pending = logEntries.filter(e => e.status === "pending").length;
-  const rejected = logEntries.filter(e => e.status === "rejected").length;
-  const total = logEntries.length;
-  const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await apiService.getAdminDashboard();
+        setDashboard(response.data);
+      } catch (err: any) {
+        handleError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
-  const maxSub = Math.max(...WEEKS.map(w => w.submissions));
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const blob = await apiService.exportEntriesAsCSV();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `siwes_logbook_export_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
-  const byDept = [
-    { dept: "Computer Science", students: 24, entries: 156, approved: 134, pending: 12, rejected: 10 },
-    { dept: "Electrical Engineering", students: 18, entries: 112, approved: 98, pending: 8, rejected: 6 },
-    { dept: "Mechanical Engineering", students: 15, entries: 89, approved: 75, pending: 7, rejected: 7 },
-    { dept: "Civil Engineering", students: 12, entries: 67, approved: 55, pending: 5, rejected: 7 },
-    { dept: "Chemical Engineering", students: 10, entries: 54, approved: 47, pending: 4, rejected: 3 },
-  ];
+  const handlePurge = async () => {
+    if (!confirm("Are you sure? This will PERMANENTLY delete entries older than 365 days that were already soft-deleted.")) return;
+    try {
+      setPurging(true);
+      const res = await apiService.purgeOldEntries();
+      alert(res.message);
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto py-20 text-center">
+        <div className="w-10 h-10 border-3 border-muted border-t-primary rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-muted-foreground">Generating analytical report...</p>
+      </div>
+    );
+  }
+
+  const stats = dashboard!;
+  const approvalRate = stats.logEntries.total > 0 ? Math.round((stats.logEntries.approved / stats.logEntries.total) * 100) : 0;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Reports & Analytics</h1>
-        <p className="text-sm text-muted-foreground">SIWES Session 2024 Performance Overview</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Analytics & Controls</h1>
+          <p className="text-sm text-muted-foreground">System health and data management</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="px-4 py-2.5 bg-background border border-border text-foreground rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {exporting ? "Preparing..." : "Export CSV"}
+            {!exporting && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* KPIs */}
+      {error && <ErrorAlert message={message} onDismiss={clearError} />}
+
+      {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Submissions", value: "523", change: "+12% this week" },
-          { label: "Approval Rate", value: `${approvalRate}%`, change: "Across all depts" },
-          { label: "Active Students", value: "87", change: "6 departments" },
-          { label: "Avg Entries/Student", value: "6.0", change: "Per month" },
+          { label: "Completion Rate", value: `${approvalRate}%`, sub: "Approved entries", icon: "📈", color: "text-green-600" },
+          { label: "Active Submissions", value: stats.logEntries.total, sub: "Total log records", icon: "📑", color: "text-blue-600" },
+          { label: "Storage Load", value: `${(stats.files.totalSize / (1024 * 1024)).toFixed(2)} MB`, sub: "Files in vault", icon: "💾", color: "text-purple-600" },
+          { label: "File Count", value: stats.files.total, sub: "Attached media", icon: "📁", color: "text-orange-600" },
         ].map(k => (
-          <div key={k.label} className="bg-card border border-card-border rounded-xl p-5">
-            <div className="text-2xl font-bold text-foreground">{k.value}</div>
-            <div className="text-sm font-medium text-foreground mt-1">{k.label}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{k.change}</div>
+          <div key={k.label} className="bg-card border border-card-border rounded-2xl p-5 shadow-sm">
+            <div className="flex justify-between items-center mb-1">
+              <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
+              <span className="text-xl">{k.icon}</span>
+            </div>
+            <div className="text-xs font-bold text-foreground uppercase tracking-wider">{k.label}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* Weekly chart */}
-      <div className="bg-card border border-card-border rounded-xl p-5">
-        <h2 className="font-semibold text-foreground mb-1">Weekly Submissions</h2>
-        <p className="text-xs text-muted-foreground mb-6">Log entries submitted per week this session</p>
-        <div className="h-32 flex items-end gap-1.5">
-          {WEEKS.map(w => (
-            <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full flex items-end gap-0.5" style={{ height: "100px" }}>
-                <div
-                  className="flex-1 bg-primary/30 rounded-t"
-                  style={{ height: `${Math.round((w.submissions / maxSub) * 100)}%` }}
-                  title={`Submissions: ${w.submissions}`}
-                />
-                <div
-                  className="flex-1 bg-primary rounded-t"
-                  style={{ height: `${Math.round((w.approved / maxSub) * 100)}%` }}
-                  title={`Approved: ${w.approved}`}
-                />
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Status chart */}
+        <div className="bg-card border border-card-border rounded-2xl p-6 shadow-sm">
+          <h2 className="font-bold text-foreground mb-6 uppercase tracking-widest text-xs">Submission Health</h2>
+          <div className="space-y-6">
+            {[
+              { label: "Approved", count: stats.logEntries.approved, color: "bg-green-500", total: stats.logEntries.total },
+              { label: "Pending Review", count: stats.logEntries.pending, color: "bg-yellow-500", total: stats.logEntries.total },
+              { label: "Rejected/Revisions", count: stats.logEntries.rejected, color: "bg-red-500", total: stats.logEntries.total },
+            ].map(item => (
+              <div key={item.label}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-semibold text-foreground">{item.label}</span>
+                  <span className="text-xs text-muted-foreground font-bold">{item.count} records</span>
+                </div>
+                <MiniBar value={item.count} max={Math.max(item.total, 1)} color={item.color} />
               </div>
-              <span className="text-xs text-muted-foreground">W{w.week}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-4 mt-3">
-          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-primary/30" /><span className="text-xs text-muted-foreground">Submitted</span></div>
-          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-primary" /><span className="text-xs text-muted-foreground">Approved</span></div>
-        </div>
-      </div>
 
-      {/* Dept table */}
-      <div className="bg-card border border-card-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
-          <h2 className="font-semibold text-foreground">Department Breakdown</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {["Department", "Students", "Total Entries", "Approved", "Pending", "Rejected", "Approval Rate"].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {byDept.map(d => {
-                const rate = Math.round((d.approved / d.entries) * 100);
-                return (
-                  <tr key={d.dept} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-3.5 text-sm font-medium text-foreground">{d.dept}</td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground">{d.students}</td>
-                    <td className="px-5 py-3.5 text-sm text-foreground">{d.entries}</td>
-                    <td className="px-5 py-3.5 text-sm text-green-600 font-medium">{d.approved}</td>
-                    <td className="px-5 py-3.5 text-sm text-yellow-600 font-medium">{d.pending}</td>
-                    <td className="px-5 py-3.5 text-sm text-red-600 font-medium">{d.rejected}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden max-w-[80px]">
-                          <div className="h-full bg-primary rounded-full" style={{ width: `${rate}%` }} />
-                        </div>
-                        <span className="text-sm font-semibold text-foreground">{rate}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* Data Management */}
+        <div className="bg-card border border-card-border rounded-2xl p-6 shadow-sm border-red-500/20">
+          <h2 className="font-bold text-red-600 mb-6 uppercase tracking-widest text-xs flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Danger Zone
+          </h2>
+          <div className="p-4 bg-red-50 border border-red-100 rounded-xl space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-red-700">Purge Archival Data</h3>
+              <p className="text-xs text-red-600/80 mt-1 leading-relaxed">
+                Permanently remove entries and associated files that are older than <strong>365 days</strong>. This action only affects records that have already been soft-deleted.
+              </p>
+            </div>
+            <button
+              onClick={handlePurge}
+              disabled={purging}
+              className="w-full py-2.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 shadow-sm"
+            >
+              {purging ? "Purging..." : "Purge 1-Year Old Data"}
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-4 text-center">
+            System logs will record all purge actions for audit purposes.
+          </p>
         </div>
       </div>
     </div>

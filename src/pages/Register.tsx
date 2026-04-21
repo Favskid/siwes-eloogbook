@@ -122,6 +122,8 @@ export default function Register() {
                 <label className="block text-sm font-medium text-foreground mb-1.5">Full Name</label>
                 <input
                   type="text"
+                  id="reg-name"
+                  name="name"
                   value={form.name}
                   onChange={e => set("name", e.target.value)}
                   placeholder="Your full name"
@@ -133,6 +135,8 @@ export default function Register() {
                 <label className="block text-sm font-medium text-foreground mb-1.5">Email Address</label>
                 <input
                   type="email"
+                  id="reg-email"
+                  name="email"
                   value={form.email}
                   onChange={e => set("email", e.target.value)}
                   placeholder="your@email.com"
@@ -143,6 +147,8 @@ export default function Register() {
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
                 <select
+                  id="reg-role"
+                  name="role"
                   value={form.role}
                   onChange={e => set("role", e.target.value)}
                   className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -155,6 +161,8 @@ export default function Register() {
                   <label className="block text-sm font-medium text-foreground mb-1.5">Matric Number</label>
                   <input
                     type="text"
+                    id="reg-matric"
+                    name="matric_number"
                     value={form.matric_number}
                     onChange={e => set("matric_number", e.target.value)}
                     placeholder="e.g. CSC/2021/001"
@@ -166,6 +174,8 @@ export default function Register() {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-foreground mb-1.5">Department</label>
                 <select
+                  id="reg-dept"
+                  name="department"
                   value={form.department}
                   onChange={e => set("department", e.target.value)}
                   className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -179,6 +189,8 @@ export default function Register() {
                 <label className="block text-sm font-medium text-foreground mb-1.5">Phone Number</label>
                 <input
                   type="tel"
+                  id="reg-phone"
+                  name="phone"
                   value={form.phone}
                   onChange={e => set("phone", e.target.value)}
                   placeholder="Your phone number"
@@ -191,6 +203,8 @@ export default function Register() {
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
+                    id="reg-password"
+                    name="password"
                     value={form.password}
                     onChange={e => set("password", e.target.value)}
                     placeholder="Create a password"
@@ -215,6 +229,8 @@ export default function Register() {
                 <div className="relative">
                   <input
                     type={showConfirmPassword ? "text" : "password"}
+                    id="reg-confirm"
+                    name="confirmPassword"
                     value={form.confirmPassword}
                     onChange={e => set("confirmPassword", e.target.value)}
                     placeholder="Repeat your password"

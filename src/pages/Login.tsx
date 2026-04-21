@@ -116,6 +116,8 @@ export default function Login() {
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Role</label>
               <select
+                id="login-role"
+                name="role"
                 value={role}
                 onChange={e => setRole(e.target.value as Role)}
                 className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
@@ -132,6 +134,8 @@ export default function Login() {
               </label>
               <input
                 type="text"
+                id="login-id"
+                name="emailOrMatric"
                 value={emailOrMatric}
                 onChange={e => setEmailOrMatric(e.target.value)}
                 placeholder={role === "student" ? "e.g. CSC/2021/001 or email" : "your@email.com"}
@@ -147,6 +151,8 @@ export default function Login() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
+                  id="login-password"
+                  name="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="Enter your password"

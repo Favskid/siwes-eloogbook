@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { apiService, LogEntry, User } from "../services/api";
 import StatusBadge from "../components/StatusBadge";
@@ -54,10 +55,10 @@ function StudentProgressModal({ studentId, onClose }: { studentId: string; onClo
             <>
               <div className="grid grid-cols-4 gap-4">
                 {[
-                  { label: "Total", value: data.stats.total, color: "text-foreground" },
-                  { label: "Approved", value: data.stats.approved, color: "text-green-600" },
-                  { label: "Pending", value: data.stats.pending, color: "text-yellow-600" },
-                  { label: "Rejected", value: data.stats.rejected, color: "text-red-600" },
+                  { label: "Total", value: data?.stats?.total ?? 0, color: "text-foreground" },
+                  { label: "Approved", value: data?.stats?.approved ?? 0, color: "text-green-600" },
+                  { label: "Pending", value: data?.stats?.pending ?? 0, color: "text-yellow-600" },
+                  { label: "Rejected", value: data?.stats?.rejected ?? 0, color: "text-red-600" },
                 ].map(s => (
                   <div key={s.label} className="bg-muted/30 rounded-lg p-3 text-center border border-border/50">
                     <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
@@ -174,11 +175,13 @@ function ApprovalModal({ entry, onApprove, onReject, onClose, isSubmitting }: {
 
 export default function SupervisorDashboard() {
   const { user } = useAuth();
+  const [location, navigate] = useLocation();
   const [dashboard, setDashboard] = useState<any>(null);
   const [students, setStudents] = useState<User[]>([]);
   const [assignedEntries, setAssignedEntries] = useState<LogEntry[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [reviewEntry, setReviewEntry] = useState<LogEntry | null>(null);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
   const [viewingProgress, setViewingProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -238,6 +241,40 @@ export default function SupervisorDashboard() {
       setSubmitting(false);
     }
   };
+  
+  const handleBulkApprove = async () => {
+    if (selectedEntryIds.length === 0) return;
+    try {
+      setSubmitting(true);
+      await apiService.bulkApproveEntries(selectedEntryIds, "Bulk approved by supervisor");
+      setSelectedEntryIds([]);
+      await fetchData();
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleEntrySelection = (id: string) => {
+    setSelectedEntryIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Filter entries based on selected student
+  const filteredEntries = selectedStudent 
+    ? assignedEntries.filter(e => e.student_id === selectedStudent) 
+    : assignedEntries;
+
+  const toggleSelectAll = () => {
+    const pendings = filteredEntries.filter(e => e.status === "pending").map(e => e.id);
+    if (selectedEntryIds.length === pendings.length && pendings.length > 0) {
+      setSelectedEntryIds([]);
+    } else {
+      setSelectedEntryIds(pendings);
+    }
+  };
 
   if (loading) {
     return (
@@ -249,11 +286,6 @@ export default function SupervisorDashboard() {
       </div>
     );
   }
-
-  // Filter entries based on selected student
-  const filteredEntries = selectedStudent 
-    ? assignedEntries.filter(e => e.student_id === selectedStudent) 
-    : assignedEntries;
 
   const stats = {
     assignedStudents: dashboard?.assignedStudentsCount || 0,
@@ -352,7 +384,14 @@ export default function SupervisorDashboard() {
                         <span className="text-[10px] font-bold text-secondary-foreground">{s.name.split(" ").map(n => n[0]).slice(0, 2).join("")}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">{s.name}</div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">{s.name}</div>
+                          {s.supervisor_id === user?.id && (
+                            <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
                         <div className="text-[10px] text-muted-foreground truncate uppercase">{s.matric_number || 'No Matric'}</div>
                       </div>
                       {sPending > 0 && (
@@ -378,10 +417,64 @@ export default function SupervisorDashboard() {
         {/* Entries */}
         <div className="lg:col-span-2 bg-card border border-card-border rounded-2xl overflow-hidden shadow-sm flex flex-col h-full">
           <div className="px-5 py-4 border-b border-border bg-muted/20 flex items-center justify-between">
-            <h2 className="font-semibold text-foreground text-sm uppercase tracking-wide">
-              {selectedStudent ? `${students.find(s => s.id === selectedStudent)?.name.split(" ")[0]}'s Entries` : "Recent Activity"}
-            </h2>
+            <div className="flex items-center gap-3">
+              {filteredEntries.some(e => e.status === "pending") && (
+                <input 
+                  type="checkbox"
+                  checked={selectedEntryIds.length > 0 && selectedEntryIds.length === filteredEntries.filter(e => e.status === "pending").length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                />
+              )}
+              <h2 className="font-semibold text-foreground text-sm uppercase tracking-wide">
+                {selectedStudent ? `${students.find(s => s.id === selectedStudent)?.name}'s Submissions` : "Recent Activity"}
+              </h2>
+            </div>
+            
+            {selectedEntryIds.length > 0 && (
+              <button
+                onClick={handleBulkApprove}
+                disabled={submitting}
+                className="bg-primary text-primary-foreground px-4 py-1.5 rounded-lg text-xs font-bold hover:shadow-md transition-all flex items-center gap-2"
+              >
+                {submitting ? "Processing..." : `Approve Selected (${selectedEntryIds.length})`}
+              </button>
+            )}
           </div>
+          
+          {selectedStudent && (
+            <div className="px-5 py-4 border-b border-border bg-primary/5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg shadow-sm">
+                {students.find(s => s.id === selectedStudent)?.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-foreground">{students.find(s => s.id === selectedStudent)?.name}</h3>
+                  <button 
+                    onClick={() => setViewingProgress(selectedStudent)}
+                    className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase hover:bg-primary/20 transition-colors"
+                  >
+                    View Progress
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 font-medium">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="w-1 h-1 bg-muted-foreground/30 rounded-full"></span>
+                    <span>{students.find(s => s.id === selectedStudent)?.matric_number || "N/A"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="w-1 h-1 bg-muted-foreground/30 rounded-full"></span>
+                    <span>{students.find(s => s.id === selectedStudent)?.email}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="w-1 h-1 bg-muted-foreground/30 rounded-full"></span>
+                    <span>{students.find(s => s.id === selectedStudent)?.department}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="divide-y divide-border overflow-y-auto max-h-[500px] flex-1">
             {filteredEntries.length === 0 ? (
               <div className="p-20 text-center text-muted-foreground">
@@ -392,8 +485,18 @@ export default function SupervisorDashboard() {
               filteredEntries.map(entry => {
                 const student = students.find(s => s.id === entry.student_id);
                 return (
-                  <div key={entry.id} className="px-5 py-4 hover:bg-muted/30 transition-colors">
+                  <div key={entry.id} className={`px-5 py-4 hover:bg-muted/30 transition-colors ${selectedEntryIds.includes(entry.id) ? "bg-primary/5" : ""}`}>
                     <div className="flex items-start gap-4">
+                      {entry.status === "pending" && (
+                        <div className="pt-1">
+                          <input 
+                            type="checkbox"
+                            checked={selectedEntryIds.includes(entry.id)}
+                            onChange={() => toggleEntrySelection(entry.id)}
+                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                          />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
                           <span className="text-sm font-bold text-foreground">Week {entry.week_number}</span>
@@ -415,7 +518,7 @@ export default function SupervisorDashboard() {
                           </button>
                         )}
                         <button 
-                         onClick={() => (window.location.href = `/log/${entry.id}`)}
+                         onClick={() => navigate(`/log/${entry.id}`)}
                          className="p-2 text-muted-foreground hover:text-foreground rounded-lg border border-border"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
